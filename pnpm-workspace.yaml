@@ -1,0 +1,12 @@
+# Build scripts are opt-in since pnpm 10. Everything listed here was reviewed.
+allowBuilds:
+  # Downloads/places the query engine binaries that Prisma Client needs at
+  # runtime; `prisma generate` (postinstall) is useless without them.
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+  # Native resolver used by eslint-config-next; falls back to a slow path.
+  unrs-resolver: true
+  # Optional native msgpack accelerator for BullMQ's msgpackr. Pure-JS
+  # fallback works, the native build is just faster.
+  msgpackr-extract: true
