@@ -1,0 +1,164 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  email         String    @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+  sessions      Session[]
+  accounts      Account[]
+  projects      Project[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
+  accountId             String
+  providerId            String
+  userId                String    @db.ObjectId
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+enum SourceType {
+  UPLOAD
+  TWITCH
+}
+
+enum ProjectStatus {
+  PENDING_UPLOAD
+  QUEUED
+  INGESTING
+  // Legacy: projects ingested before analysis existed. Retry moves them on.
+  INGESTED
+  ANALYZING
+  REVIEW
+  RENDERING
+  DONE
+  FAILED
+}
+
+// A highlight detected by the analysis. start/end is the span it detected;
+// clipStart/clipEnd are the bounds used in the edit, which the user adjusts.
+type Moment {
+  id        String
+  start     Float
+  end       Float
+  clipStart Float?
+  clipEnd   Float?
+  title     String
+  summary   String
+  category  String
+  score     Float
+  thumbKey  String?
+}
+
+type Chapter {
+  start Float
+  title String
+}
+
+type Output {
+  key         String
+  durationSec Float
+  size        Float
+  chapters    Chapter[]
+}
+
+// A stream VOD and the edit we produce from it. The worker (see /worker)
+// writes status, stage, progress and media fields directly in MongoDB.
+model Project {
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  userId String @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title  String
+
+  sourceType     SourceType
+  sourceUrl      String?
+  sourceFileName String?
+  // Bytes. Float because Prisma's Int is 32-bit and VODs exceed 2 GB.
+  sourceSize     Float?
+  sourceKey      String?
+  uploadId       String?
+
+  durationSec   Float?
+  width         Int?
+  height        Int?
+  fps           Float?
+  audioKey      String?
+  chatKey       String?
+  transcriptKey String?
+  signalsKey    String?
+  // Safe cut intervals (pauses between words), used to snap clip edits.
+  cutpointsKey  String?
+
+  // Highlights, in source order.
+  moments Moment[]
+  // The edit: moment ids in the order they play in the final video.
+  montage String[]
+  outputs Output[]
+  // Which job to re-run on retry after a failure.
+  lastJob String?
+
+  status      ProjectStatus @default(PENDING_UPLOAD)
+  stage       String?
+  progress    Float         @default(0)
+  // Translatable code (see app.errors in the dictionaries) and its parameters.
+  error       String?
+  errorParams Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@map("project")
+}
